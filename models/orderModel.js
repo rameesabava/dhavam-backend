@@ -15,15 +15,19 @@ const orderSchema = new mongoose.Schema({
     },
     items: [
         {
-            plantId: {
+            productId: {
                 type: String,
                 required: true
             },
-            plantName: {
+            productName: {
                 type: String,
                 required: true
             },
-            plantImage: {
+            productImage: {
+                type: String,
+                required: true
+            },
+            size: {
                 type: String,
                 required: true
             },
@@ -31,10 +35,7 @@ const orderSchema = new mongoose.Schema({
                 type: Number,
                 required: true
             },
-            price: {
-                type: Number,
-                required: true
-            }
+            
         }
     ],
 
@@ -42,10 +43,7 @@ const orderSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    totalAmount: {
-        type: Number,
-        required: true
-    },
+    
     paymentMethod: {
         type: String,
         default: 'Cash on Delivery'

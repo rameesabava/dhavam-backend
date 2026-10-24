@@ -1,8 +1,8 @@
 const express = require('express')
 const userController = require('../controllers/userController')
 const productController = require('../controllers/productController')
-// const cartController = require('../controllers/cartController')
-// const orderController = require('../controllers/orderController')
+const cartController = require('../controllers/cartController')
+const orderController = require('../controllers/orderController')
 const adminMiddleware = require('../middlewares/adminMiddleware')
 const jwtMiddleware = require('../middlewares/jwtMiddleware')
 const multerMiddleware = require('../middlewares/multerMiddleware')
@@ -26,13 +26,13 @@ router.put('/product/:id',adminMiddleware,multerMiddleware.single('image'), prod
 router.get('/users', adminMiddleware, userController.getAllUsersController)
 
 // get all orders
-// router.get('/admin/orders', adminMiddleware, orderController.getAllOrdersController)
+router.get('/admin/orders', adminMiddleware, orderController.getAllOrdersController)
 
 // view order
-// router.get('/order/:id', adminMiddleware, orderController.viewOrderController)
+router.get('/order/:id', adminMiddleware, orderController.viewOrderController)
 
 // update order status
-// router.put('/order/status/:id', adminMiddleware, orderController.updateOrderStatusController)
+router.put('/order/status/:id', adminMiddleware, orderController.updateOrderStatusController)
 
 
 // -------------------------user------------------------------------
@@ -43,25 +43,25 @@ router.get('/products', jwtMiddleware, productController.getAllProductsControlle
 router.get('/product/:id', jwtMiddleware, productController.viewProductController)
 
 // add plant to cart
-// router.post('/cart/add',jwtMiddleware, cartController.addToCartController)
+router.post('/cart/add',jwtMiddleware, cartController.addToCartController)
 
 // get cart items
-// router.get('/cart', jwtMiddleware, cartController.getCartController)
+router.get('/cart', jwtMiddleware, cartController.getCartController)
 
 // incremet quantity
-// router.put('/cart/increment/:cartId', jwtMiddleware, cartController.incrementQuantityController)
+router.put('/cart/increment/:cartId', jwtMiddleware, cartController.incrementQuantityController)
 
 // decremet quantity
-// router.put('/cart/decrement/:cartId', jwtMiddleware, cartController.decrementQuantityController)
+router.put('/cart/decrement/:cartId', jwtMiddleware, cartController.decrementQuantityController)
 
 // remove cart item
-// router.delete('/cart/remove/:cartId', jwtMiddleware, cartController.removeCartItemController)
+router.delete('/cart/remove/:cartId', jwtMiddleware, cartController.removeCartItemController)
 
 // remove all cart items
-// router.delete('/cart/remove', jwtMiddleware, cartController.removeAllCartItemsController)
+router.delete('/cart/remove', jwtMiddleware, cartController.removeAllCartItemsController)
 
 // add order
-// router.post('/order/add',jwtMiddleware, orderController.addOrderController)
+router.post('/order/add',jwtMiddleware, orderController.addOrderController)
 
 
 module.exports = router

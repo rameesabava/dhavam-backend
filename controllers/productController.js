@@ -24,7 +24,7 @@ exports.viewProductController = async (req,res)=>{
     res.status(200).json(productDetails)
 }
 
-// update product
+// update product by admin
 exports.updateProductController = async (req, res) => {
     console.log("Inside updateProductController")
 
