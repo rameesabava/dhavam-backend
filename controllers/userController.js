@@ -39,7 +39,7 @@ exports.loginController = async (req,res)=>{
 // get all users
 exports.getAllUsersController = async (req, res) => {
   try {
-    const allUsers = await users.find().select("-password");
+    const allUsers = await users.find({role:"user"}).select("-password").sort({ _id: -1 });
 
     res.status(200).json({
       success: true,
