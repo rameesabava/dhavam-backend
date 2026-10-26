@@ -31,11 +31,11 @@ router.get('/admin/orders', adminMiddleware, orderController.getAllOrdersControl
 // view order
 router.get('/order/:id', adminMiddleware, orderController.viewOrderController)
 
-router.put(
-  "/order/status/:id",
-  adminMiddleware,
-  orderController.updateOrderStatusController
-);
+// update status of order
+router.put("/order/status/:id", adminMiddleware,orderController.updateOrderStatusController);
+
+// to delete user
+router.delete("/admin/users/:id",adminMiddleware,userController.deleteUserController);
 
 
 // -------------------------user------------------------------------
