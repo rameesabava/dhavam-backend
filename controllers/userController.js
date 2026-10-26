@@ -37,8 +37,19 @@ exports.loginController = async (req,res)=>{
 }
 
 // get all users
-exports.getAllUsersController = async (req,res)=>{
-    console.log("Inside getAllUsersController");
-    const allUsers = await users.find({role:"user"})
-    res.status(200).json(allUsers)
-}
+exports.getAllUsersController = async (req, res) => {
+  try {
+    const allUsers = await users.find().select("-password");
+
+    res.status(200).json({
+      success: true,
+      users: allUsers,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch users",
+      error: error.message,
+    });
+  }
+};

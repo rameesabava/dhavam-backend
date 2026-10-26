@@ -19,11 +19,11 @@ router.post('/login',userController.loginController)
 // add product
 router.post('/product/add',adminMiddleware,multerMiddleware.single('image'), productController.addProductController)
 
-// update plant
+// update product
 router.put('/product/:id',adminMiddleware,multerMiddleware.single('image'), productController.updateProductController)
 
 // get all users
-router.get('/users', adminMiddleware, userController.getAllUsersController)
+router.get('/admin/users', adminMiddleware, userController.getAllUsersController)
 
 // get all orders
 router.get('/admin/orders', adminMiddleware, orderController.getAllOrdersController)
@@ -31,8 +31,11 @@ router.get('/admin/orders', adminMiddleware, orderController.getAllOrdersControl
 // view order
 router.get('/order/:id', adminMiddleware, orderController.viewOrderController)
 
-// update order status
-router.put('/order/status/:id', adminMiddleware, orderController.updateOrderStatusController)
+router.put(
+  "/order/status/:id",
+  adminMiddleware,
+  orderController.updateOrderStatusController
+);
 
 
 // -------------------------user------------------------------------
@@ -63,5 +66,18 @@ router.delete('/cart/remove', jwtMiddleware, cartController.removeAllCartItemsCo
 // add order
 router.post('/order/add',jwtMiddleware, orderController.addOrderController)
 
+// Get logged-in user's orders
+router.get('/myOrders',jwtMiddleware,orderController.getMyOrdersController);
+
+// delete product
+router.delete("/product/:id",adminMiddleware,productController.deleteProductController);
+
+
+/* User routes */
+router.put(
+  "/myOrders/cancel/:id",
+  jwtMiddleware,
+  orderController.cancelMyOrderController
+);
 
 module.exports = router

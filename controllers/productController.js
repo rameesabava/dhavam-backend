@@ -1,39 +1,198 @@
-const products = require('../models/productModel')
 
-// add product
+const products = require("../models/productModel");
+const fs = require("fs/promises");
+const path = require("path");
+// Parse sizes sent as JSON from FormData
+function parseSizes(sizes) {
+  if (Array.isArray(sizes)) {
+    return sizes;
+  }
+
+  if (typeof sizes === "string") {
+    try {
+      const parsed = JSON.parse(sizes);
+
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Support a comma-separated string as a fallback.
+      return sizes
+        .split(",")
+        .map((size) => size.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return [];
+}
+
+// Add product
 exports.addProductController = async (req, res) => {
-    console.log("Inside addProductController");
-    const { name, description, group, image, sizes } = req.body
-    const uploadimage = req.file?req.file.filename:image
-    const productDetails = await products.create({ name, description, group, image:uploadimage, sizes })
-    res.status(200).json(productDetails)
-}
+  try {
+    const { name, description, group, sizes } = req.body;
 
-// get products
-exports.getAllProductsController = async (req,res)=>{
-    console.log("Inside getAllProductsController");
-    const allProducts = await products.find()
-    res.status(200).json(allProducts)
-}
+    const uploadimage = req.file
+      ? req.file.filename
+      : req.body.image;
 
-// view product
-exports.viewProductController = async (req,res)=>{
-    console.log("Inside viewProductController");
-    const {id} = req.params
-    const productDetails = await products.findById({_id:id})
-    res.status(200).json(productDetails)
-}
+    if (!name || !description || !uploadimage) {
+      return res.status(400).json({
+        message: "Name, description, and product image are required.",
+      });
+    }
 
-// update product by admin
+    const productDetails = await products.create({
+      name: name.trim(),
+      description: description.trim(),
+      group: group || "whole",
+      image: uploadimage,
+      sizes: parseSizes(sizes),
+    });
+
+    return res.status(201).json(productDetails);
+  } catch (error) {
+    console.error("Add product error:", error);
+
+    return res.status(500).json({
+ message: error.message || "Unable to add product."    });
+  }
+};
+
+// Get all products
+exports.getAllProductsController = async (req, res) => {
+  try {
+    const allProducts = await products.find();
+
+    return res.status(200).json(allProducts);
+  } catch (error) {
+    console.error("Get products error:", error);
+
+    return res.status(500).json({
+      message: "Unable to fetch products.",
+    });
+  }
+};
+
+// View one product
+exports.viewProductController = async (req, res) => {
+  try {
+    const productDetails = await products.findById(req.params.id);
+
+    if (!productDetails) {
+      return res.status(404).json({
+        message: "Product not found.",
+      });
+    }
+
+    return res.status(200).json(productDetails);
+  } catch (error) {
+    console.error("View product error:", error);
+
+    return res.status(500).json({
+      message: "Unable to fetch product.",
+    });
+  }
+};
+
+// Update product by admin
 exports.updateProductController = async (req, res) => {
-    console.log("Inside updateProductController")
+  try {
+    const { name, description, group, sizes } = req.body;
 
-    const { id } = req.params
-    const {name, description, group, image, sizes} = req.body
+    const existingProduct = await products.findById(req.params.id);
 
-    const uploadedimage = req.file ? req.file.filename : image
+    if (!existingProduct) {
+      return res.status(404).json({
+        message: "Product not found.",
+      });
+    }
 
-    const updatedProduct = await products.findByIdAndUpdate({ _id: id },{name, description, group, image: uploadedimage, sizes},{ new: true })
-    
-    res.status(200).json(updatedProduct)
-}
+    // Keep the existing image unless a replacement is uploaded.
+    const uploadedimage = req.file
+      ? req.file.filename
+      : req.body.image || existingProduct.image;
+
+    const updatedProduct = await products.findByIdAndUpdate(
+      req.params.id,
+      {
+        name: name?.trim() || existingProduct.name,
+        description:
+          description?.trim() || existingProduct.description,
+        group: group || existingProduct.group,
+        image: uploadedimage,
+        sizes:
+          sizes !== undefined
+            ? parseSizes(sizes)
+            : existingProduct.sizes,
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    return res.status(200).json(updatedProduct);
+  } catch (error) {
+    console.error("Update product error:", error);
+
+    return res.status(500).json({
+      message: "Unable to update product.",
+    });
+  }
+};
+
+
+// Delete a product by its MongoDB ID
+exports.deleteProductController = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || !/^[a-fA-F0-9]{24}$/.test(id)) {
+      return res.status(400).json({
+        message: "Invalid product ID.",
+      });
+    }
+
+    const product = await products.findById(id);
+
+    if (!product) {
+      return res.status(404).json({
+        message: "Product not found.",
+      });
+    }
+
+    // Delete the product record first.
+    await products.findByIdAndDelete(id);
+
+    // Remove the uploaded image, if it exists.
+    if (product.image) {
+      const imageName = path.basename(product.image);
+      const imagePath = path.join(
+        process.cwd(),
+        "uploads",
+        imageName
+      );
+
+      try {
+        await fs.unlink(imagePath);
+      } catch (fileError) {
+        if (fileError.code !== "ENOENT") {
+          console.error("Could not delete product image:", fileError);
+        }
+      }
+    }
+
+    return res.status(200).json({
+      message: "Product deleted successfully.",
+      productId: id,
+    });
+  } catch (error) {
+    console.error("Delete product error:", error);
+
+    return res.status(500).json({
+      message: "Unable to delete product.",
+    });
+  }
+};
+
