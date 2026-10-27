@@ -43,8 +43,6 @@ router.delete("/admin/users/:id",adminMiddleware,userController.deleteUserContro
 
 
 // -------------------------user------------------------------------
-// get products
-router.get('/products', jwtMiddleware, productController.getAllProductsController)
 
 // view plant
 router.get('/product/:id', jwtMiddleware, productController.viewProductController)
