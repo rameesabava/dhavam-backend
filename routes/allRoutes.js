@@ -15,6 +15,10 @@ router.post('/register',userController.registerController)
 // login
 router.post('/login',userController.loginController)
 
+// get products
+router.get('/products', productController.getAllProductsController)
+
+
 // -------------------admin----------------------------------------
 // add product
 router.post('/product/add',adminMiddleware,multerMiddleware.single('image'), productController.addProductController)
