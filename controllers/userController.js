@@ -26,8 +26,16 @@ exports.loginController = async (req,res)=>{
         const isPasswordMatch = await bcrypt.compare(password,existingUser.password)
         if(isPasswordMatch){
             const token = jwt.sign({email,role:existingUser.role},process.env.JWT_SECRET)
-            res.status(200).json({user:existingUser,token})
-        }else{
+return res.status(200).json({
+  user: {
+    _id: existingUser._id,
+    username: existingUser.username,
+    email: existingUser.email,
+    phone: existingUser.phone,
+    role: existingUser.role,
+  },
+  token,
+});        }else{
          res.status(409).json("Incorrect Email/Password...")
         }
     }else{
@@ -94,6 +102,161 @@ exports.deleteUserController = async (req, res) => {
       success: false,
       message: "Failed to delete customer.",
       error: error.message,
+    });
+  }
+};
+
+// Get the logged-in user's profile
+exports.getMyProfileController = async (req, res) => {
+  try {
+    const user = await users.findOne({ email: req.payload })
+      .select("-password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch profile.",
+    });
+  }
+};
+
+
+// Update profile and optionally change password
+exports.updateMyProfileController = async (req, res) => {
+  try {
+    const {
+      username,
+      email,
+      phone,
+      currentPassword,
+      newPassword,
+    } = req.body;
+
+    const user = await users.findOne({ email: req.payload });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    // Validate profile fields
+    if (
+      typeof username !== "string" ||
+      !username.trim() ||
+      typeof email !== "string" ||
+      !email.trim() ||
+      typeof phone !== "string" ||
+      !phone.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Username, email, and phone are required.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Check whether another account uses this email
+    const existingUser = await users.findOne({
+      email: normalizedEmail,
+      _id: { $ne: user._id },
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "This email is already registered.",
+      });
+    }
+
+    // Change password only when a new password is supplied
+    if (newPassword !== undefined && newPassword !== "") {
+      if (
+        typeof currentPassword !== "string" ||
+        typeof newPassword !== "string"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Enter your current password and new password.",
+        });
+      }
+
+      if (newPassword.length < 8) {
+        return res.status(400).json({
+          success: false,
+          message: "New password must be at least 8 characters.",
+        });
+      }
+
+      const passwordMatches = await bcrypt.compare(
+        currentPassword,
+        user.password
+      );
+
+      if (!passwordMatches) {
+        return res.status(400).json({
+          success: false,
+          message: "Your current password is incorrect.",
+        });
+      }
+
+      user.password = await bcrypt.hash(newPassword, 10);
+    }
+
+    user.username = username.trim();
+    user.email = normalizedEmail;
+    user.phone = phone.trim();
+
+    await user.save();
+
+    // Issue a fresh token because the email may have changed.
+    const token = jwt.sign(
+      { email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    // Never send the password hash to the frontend.
+    const safeUser = {
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully.",
+      user: safeUser,
+      token,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "This email is already registered.",
+      });
+    }
+
+    console.error("Update profile error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update profile.",
     });
   }
 };

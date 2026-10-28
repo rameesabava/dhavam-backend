@@ -1,21 +1,30 @@
-const jwt = require('jsonwebtoken')
+const jwt = require("jsonwebtoken");
 
-const jwtMiddleware = (req,res,next)=>{
-    console.log("Inside jwtMiddleware");
-    const token = req.headers['authorization'].split(' ')[1]
-    if(token){
-        try{
-            const jwtResponse = jwt.verify(token,process.env.JWT_SECRET)
-            req.payload = jwtResponse.email
-            req.role = jwtResponse.role
-            next()
-        }catch(err){
-            res.status(404).json("Authorization failed... Invalid token")
-        }
-    }else{
-        res.status(404).json("Authorization failed... Token is Missing")
-    }
-    
-}
+const jwtMiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization;
 
-module.exports = jwtMiddleware
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      success: false,
+      message: "Authorization token is missing.",
+    });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    req.payload = decoded.email;
+    req.role = decoded.role;
+
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token. Please log in again.",
+    });
+  }
+};
+
+module.exports = jwtMiddleware;

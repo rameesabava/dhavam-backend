@@ -74,12 +74,17 @@ router.get('/myOrders',jwtMiddleware,orderController.getMyOrdersController);
 // delete product
 router.delete("/product/:id",adminMiddleware,productController.deleteProductController);
 
-
-/* User routes */
+// my orders
 router.put(
   "/myOrders/cancel/:id",
   jwtMiddleware,
   orderController.cancelMyOrderController
 );
+
+// View logged-in user's profile
+router.get("/profile",jwtMiddleware,userController.getMyProfileController);
+
+// Update logged-in user's profile
+router.put("/profile",jwtMiddleware,userController.updateMyProfileController);
 
 module.exports = router
