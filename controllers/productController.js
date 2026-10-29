@@ -98,9 +98,8 @@ exports.viewProductController = async (req, res) => {
 // Update product by admin
 exports.updateProductController = async (req, res) => {
   try {
-    const { name, description, group, sizes } = req.body;
-
-    const existingProduct = await products.findById(req.params.id);
+    const { id } = req.params;
+    const existingProduct = await products.findById(id);
 
     if (!existingProduct) {
       return res.status(404).json({
@@ -108,36 +107,47 @@ exports.updateProductController = async (req, res) => {
       });
     }
 
-    // Keep the existing image unless a replacement is uploaded.
-    const uploadedimage = req.file
-      ? req.file.filename
-      : req.body.image || existingProduct.image;
+    const updateData = {};
+
+    if (req.body.name !== undefined) {
+      updateData.name = req.body.name.trim();
+    }
+
+    if (req.body.description !== undefined) {
+      updateData.description = req.body.description.trim();
+    }
+
+    if (req.body.group !== undefined) {
+      updateData.group = req.body.group || "whole";
+    }
+
+    if (req.body.sizes !== undefined) {
+      updateData.sizes = parseSizes(req.body.sizes);
+    }
+
+    // Replace the image only if a new image was uploaded.
+    if (req.file) {
+      updateData.image = req.file.filename;
+    }
 
     const updatedProduct = await products.findByIdAndUpdate(
-      req.params.id,
-      {
-        name: name?.trim() || existingProduct.name,
-        description:
-          description?.trim() || existingProduct.description,
-        group: group || existingProduct.group,
-        image: uploadedimage,
-        sizes:
-          sizes !== undefined
-            ? parseSizes(sizes)
-            : existingProduct.sizes,
-      },
+      id,
+      { $set: updateData },
       {
         new: true,
         runValidators: true,
       }
     );
 
-    return res.status(200).json(updatedProduct);
+    return res.status(200).json({
+      message: "Product updated successfully.",
+      product: updatedProduct,
+    });
   } catch (error) {
     console.error("Update product error:", error);
 
     return res.status(500).json({
-      message: "Unable to update product.",
+      message: error.message || "Unable to update product.",
     });
   }
 };
