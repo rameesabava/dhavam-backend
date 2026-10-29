@@ -1,6 +1,7 @@
-const users = require('../models/userModel')
-const bcrypt = require('bcrypt')
-const jwt = require('jsonwebtoken')
+const mongoose = require("mongoose");
+const users = require("../models/userModel");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 // register user
 exports.registerController = async (req,res)=>{
@@ -64,16 +65,14 @@ exports.getAllUsersController = async (req, res) => {
 
 // Delete a customer
 exports.deleteUserController = async (req, res) => {
-  console.log("Inside deleteUserController");
-  
   try {
     const { id } = req.params;
 
-    // Validate the MongoDB user ID
+    // Validate the customer ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid user ID.",
+        message: "Invalid customer ID",
       });
     }
 
@@ -83,15 +82,15 @@ exports.deleteUserController = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found.",
+        message: "Customer not found",
       });
     }
 
-    // Prevent deleting administrators
+    // Prevent deleting an admin account
     if (user.role === "admin") {
       return res.status(403).json({
         success: false,
-        message: "Administrator accounts cannot be deleted here.",
+        message: "Admin accounts cannot be deleted here",
       });
     }
 
@@ -100,14 +99,14 @@ exports.deleteUserController = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Customer deleted successfully.",
+      message: "Customer deleted successfully",
     });
   } catch (error) {
-    console.error("Delete user error:", error);
+    console.error("Delete customer error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to delete customer.",
+      message: "Failed to delete customer",
     });
   }
 };
