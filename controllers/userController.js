@@ -64,9 +64,12 @@ exports.getAllUsersController = async (req, res) => {
 
 // Delete a customer
 exports.deleteUserController = async (req, res) => {
+  console.log("Inside deleteUserController");
+  
   try {
     const { id } = req.params;
 
+    // Validate the MongoDB user ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
@@ -74,6 +77,7 @@ exports.deleteUserController = async (req, res) => {
       });
     }
 
+    // Find the customer
     const user = await users.findById(id);
 
     if (!user) {
@@ -83,7 +87,7 @@ exports.deleteUserController = async (req, res) => {
       });
     }
 
-    // Prevent deleting administrator accounts
+    // Prevent deleting administrators
     if (user.role === "admin") {
       return res.status(403).json({
         success: false,
@@ -91,6 +95,7 @@ exports.deleteUserController = async (req, res) => {
       });
     }
 
+    // Delete the customer
     await users.findByIdAndDelete(id);
 
     return res.status(200).json({
@@ -98,10 +103,11 @@ exports.deleteUserController = async (req, res) => {
       message: "Customer deleted successfully.",
     });
   } catch (error) {
+    console.error("Delete user error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to delete customer.",
-      error: error.message,
     });
   }
 };

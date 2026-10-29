@@ -31,6 +31,8 @@ const adminMiddleware = (req, res, next) => {
             token,
             process.env.JWT_SECRET
         );
+console.log("Frontend token email:", jwtResponse.email);
+console.log("Frontend token role:", jwtResponse.role);
 
         req.payload = jwtResponse.email;
         req.role = jwtResponse.role;
