@@ -1,146 +1,207 @@
-const orders = require('../models/orderModel')
+const pool = require('../config/db');
 
-// // add order
+// Add order
 exports.addOrderController = async (req, res) => {
-    console.log("Inside addOrderController");
+    try {
+        console.log("Inside addOrderController");
 
-    const userMail = req.payload
-    const { username, phone, items, address, paymentMethod } = req.body
+        const userEmail = req.payload;
+        const { username, phone, items, address, paymentMethod, totalAmount } = req.body;
 
-    const newOrder = await orders.create({ userMail, username, phone, items, address,  paymentMethod })
-    res.status(201).json(newOrder)
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                message: "Order items cannot be empty."
+            });
+        }
 
-}
+        if (!address || !phone) {
+            return res.status(400).json({
+                message: "Delivery address and contact phone are required."
+            });
+        }
 
-// // get all orders
-exports.getAllOrdersController = async (req,res)=>{
-    console.log("Inside getAllOrdersController");
-    const allOrders = await orders.find().sort({createdAt:-1})
-    res.status(200).json(allOrders)
-}
+        // Calculate total amount if not sent or verify
+        let computedTotal = 0;
+        for (const item of items) {
+            const price = parseFloat(item.price) || 0;
+            const qty = parseInt(item.quantity) || 1;
+            computedTotal += price * qty;
+        }
 
-// to view single order details
-exports.viewOrderController = async (req,res)=>{
-    console.log("Inside viewOrderController");
-    const {id} = req.params
-    const orderDetails = await orders.findById({_id:id})
-    res.status(200).json(orderDetails)
-}
+        const finalTotal = parseFloat(totalAmount) || computedTotal;
 
+        const [result] = await pool.query(
+            `INSERT INTO orders (user_email, username, phone, address, payment_method, order_status, total_amount, items_json) 
+             VALUES (?, ?, ?, ?, ?, 'Placed', ?, ?)`,
+            [
+                userEmail,
+                username || userEmail.split("@")[0],
+                String(phone),
+                address.trim(),
+                paymentMethod || 'Cash on Delivery',
+                finalTotal,
+                JSON.stringify(items)
+            ]
+        );
 
-// Admin: update an order from Placed -> Shipped
-// or Shipped -> Delivered.
+        // Clear cart for this user after successful order
+        await pool.query("DELETE FROM carts WHERE user_email = ?", [userEmail]);
+
+        const [newOrder] = await pool.query("SELECT * FROM orders WHERE id = ?", [result.insertId]);
+
+        return res.status(201).json(newOrder[0]);
+    } catch (error) {
+        console.error("Add order error:", error);
+        return res.status(500).json({
+            message: "Failed to place order.",
+            error: error.message
+        });
+    }
+};
+
+// Get all orders (Admin)
+exports.getAllOrdersController = async (req, res) => {
+    try {
+        console.log("Inside getAllOrdersController");
+        const [allOrders] = await pool.query("SELECT * FROM orders ORDER BY id DESC");
+        return res.status(200).json(allOrders);
+    } catch (error) {
+        console.error("Get all orders error:", error);
+        return res.status(500).json({
+            message: "Failed to fetch orders.",
+            error: error.message
+        });
+    }
+};
+
+// View single order
+exports.viewOrderController = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [orders] = await pool.query("SELECT * FROM orders WHERE id = ? LIMIT 1", [id]);
+
+        if (orders.length === 0) {
+            return res.status(404).json({
+                message: "Order not found."
+            });
+        }
+
+        return res.status(200).json(orders[0]);
+    } catch (error) {
+        console.error("View order error:", error);
+        return res.status(500).json({
+            message: "Failed to fetch order details.",
+            error: error.message
+        });
+    }
+};
+
+// Admin: update order status to Shipped or Delivered
 exports.updateOrderStatusController = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { orderStatus } = req.body;
+    try {
+        const { id } = req.params;
+        const { orderStatus } = req.body;
 
-    if (!["Shipped", "Delivered"].includes(orderStatus)) {
-      return res.status(400).json({
-        message: "Status must be Shipped or Delivered.",
-      });
+        if (!["Shipped", "Delivered"].includes(orderStatus)) {
+            return res.status(400).json({
+                message: "Status must be Shipped or Delivered.",
+            });
+        }
+
+        const [existing] = await pool.query("SELECT * FROM orders WHERE id = ? LIMIT 1", [id]);
+
+        if (existing.length === 0) {
+            return res.status(404).json({
+                message: "Order not found.",
+            });
+        }
+
+        const order = existing[0];
+
+        // Valid status transitions: Placed -> Shipped, Shipped -> Delivered
+        if (
+            (order.order_status === "Placed" && orderStatus === "Shipped") ||
+            (order.order_status === "Shipped" && orderStatus === "Delivered")
+        ) {
+            await pool.query("UPDATE orders SET order_status = ? WHERE id = ?", [orderStatus, id]);
+            const [updated] = await pool.query("SELECT * FROM orders WHERE id = ?", [id]);
+
+            return res.status(200).json({
+                message: `Order marked as ${orderStatus}.`,
+                order: updated[0],
+            });
+        } else {
+            return res.status(400).json({
+                message: `Cannot change order status from ${order.order_status} to ${orderStatus}.`,
+            });
+        }
+    } catch (error) {
+        console.error("Update order status error:", error);
+        return res.status(500).json({
+            message: "Failed to update order status.",
+            error: error.message
+        });
     }
-
-    const order = await orders.findById(id);
-
-    if (!order) {
-      return res.status(404).json({
-        message: "Order not found.",
-      });
-    }
-
-    // Only allow the next valid status transition.
-    if (
-      order.orderStatus === "Placed" &&
-      orderStatus === "Shipped"
-    ) {
-      order.orderStatus = "Shipped";
-    } else if (
-      order.orderStatus === "Shipped" &&
-      orderStatus === "Delivered"
-    ) {
-      order.orderStatus = "Delivered";
-    } else {
-      return res.status(400).json({
-        message: `Cannot change order status from ${order.orderStatus} to ${orderStatus}.`,
-      });
-    }
-
-    await order.save();
-
-    return res.status(200).json({
-      message: `Order marked as ${order.orderStatus}.`,
-      order,
-    });
-  } catch (error) {
-    console.error("Update order status error:", error);
-
-    return res.status(500).json({
-      message: "Failed to update order status.",
-    });
-  }
 };
 
-// Customer: cancel their own order before it ships.
+// Customer: cancel order before it ships
 exports.cancelMyOrderController = async (req, res) => {
-  try {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
+        const userEmail = req.payload;
 
-    // jwtMiddleware must set req.payload to the authenticated
-    // customer's email, as used by addOrderController.
-    const userMail = req.payload;
+        const [existing] = await pool.query(
+            "SELECT * FROM orders WHERE id = ? AND user_email = ? LIMIT 1",
+            [id, userEmail]
+        );
 
-    const order = await orders.findOne({
-      _id: id,
-      userMail,
-    });
+        if (existing.length === 0) {
+            return res.status(404).json({
+                message: "Order not found.",
+            });
+        }
 
-    if (!order) {
-      return res.status(404).json({
-        message: "Order not found.",
-      });
+        const order = existing[0];
+
+        if (order.order_status !== "Placed") {
+            return res.status(400).json({
+                message: "You can only cancel an order before it has been shipped.",
+            });
+        }
+
+        await pool.query("UPDATE orders SET order_status = 'Cancelled' WHERE id = ?", [id]);
+        const [updated] = await pool.query("SELECT * FROM orders WHERE id = ?", [id]);
+
+        return res.status(200).json({
+            message: "Your order has been cancelled.",
+            order: updated[0],
+        });
+    } catch (error) {
+        console.error("Cancel order error:", error);
+        return res.status(500).json({
+            message: "Failed to cancel order.",
+            error: error.message
+        });
     }
-
-    if (order.orderStatus !== "Placed") {
-      return res.status(400).json({
-        message:
-          "You can only cancel an order before it has been shipped.",
-      });
-    }
-
-    order.orderStatus = "Cancelled";
-    await order.save();
-
-    return res.status(200).json({
-      message: "Your order has been cancelled.",
-      order,
-    });
-  } catch (error) {
-    console.error("Cancel order error:", error);
-
-    return res.status(500).json({
-      message: "Failed to cancel order.",
-    });
-  }
 };
 
-
-// Get orders belonging to the logged-in user
+// Customer: get my orders
 exports.getMyOrdersController = async (req, res) => {
     try {
         console.log("Inside getMyOrdersController");
+        const userEmail = req.payload;
 
-        const userMail = req.payload;
+        const [myOrders] = await pool.query(
+            "SELECT * FROM orders WHERE user_email = ? ORDER BY id DESC",
+            [userEmail]
+        );
 
-        const myOrders = await orders
-            .find({ userMail })
-            .sort({ createdAt: -1 });
-
-        res.status(200).json(myOrders);
+        return res.status(200).json(myOrders);
     } catch (error) {
         console.error("Get my orders error:", error);
-        res.status(500).json({
-            message: "Failed to fetch your orders"
+        return res.status(500).json({
+            message: "Failed to fetch your orders",
+            error: error.message
         });
     }
 };
