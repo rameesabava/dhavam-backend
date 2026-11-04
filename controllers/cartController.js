@@ -1,62 +1,75 @@
-const pool = require('../config/db');
+
+const carts = require('../models/cartModel');
+const products = require('../models/productModel');
 
 // Add product to cart
 exports.addToCartController = async (req, res) => {
     try {
         console.log("Inside addToCartController");
 
-        const userEmail = req.payload;
-        const { productId, quantity } = req.body;
+        const userMail = req.payload;
+        const { productId, size } = req.body;
 
-        if (!productId) {
+        if (!productId || !size) {
             return res.status(400).json({
-                message: "Product ID is required"
+                message: "Product ID and size are required"
             });
         }
 
-        const qty = parseInt(quantity, 10) || 1;
+        // Find product
+        const product = await products.findById(productId);
 
-        // Check if product exists
-        const [products] = await pool.query("SELECT * FROM products WHERE id = ? LIMIT 1", [productId]);
-        if (products.length === 0) {
+        if (!product) {
             return res.status(404).json({
                 message: "Product not found"
             });
         }
 
-        // Check if already in user's cart
-        const [existing] = await pool.query(
-            "SELECT * FROM carts WHERE user_email = ? AND product_id = ? LIMIT 1",
-            [userEmail, productId]
+        // Check whether selected size exists
+        const sizeExists = product.sizes.some(
+            item => String(item) === String(size)
         );
 
-        if (existing.length > 0) {
-            const newQty = existing[0].quantity + qty;
-            await pool.query(
-                "UPDATE carts SET quantity = ? WHERE id = ?",
-                [newQty, existing[0].id]
-            );
-
-            const [updated] = await pool.query("SELECT * FROM carts WHERE id = ?", [existing[0].id]);
-            return res.status(200).json({
-                message: "Cart quantity updated",
-                data: updated[0]
+        if (!sizeExists) {
+            return res.status(400).json({
+                message: "Selected size is not available"
             });
         }
 
-        const [result] = await pool.query(
-            "INSERT INTO carts (user_email, product_id, quantity) VALUES (?, ?, ?)",
-            [userEmail, productId, qty]
-        );
+        // Check product and size in the user's cart
+        let existingProduct = await carts.findOne({
+            userMail,
+            productId,
+            size: String(size)
+        });
 
-        const [newItem] = await pool.query("SELECT * FROM carts WHERE id = ?", [result.insertId]);
+        if (existingProduct) {
+            // Increase quantity for the same size
+            existingProduct.quantity += 1;
+            await existingProduct.save();
+
+            return res.status(200).json({
+                message: "Cart quantity updated",
+                data: existingProduct
+            });
+        }
+
+        // Add a new cart item
+        const newItemCart = await carts.create({
+            userMail,
+            productId: product._id,
+            productName: product.name,
+            productImage: product.image,
+            size: String(size),
+            quantity: 1
+        });
 
         return res.status(201).json({
             message: "Product added to cart",
-            data: newItem[0]
+            data: newItemCart
         });
+
     } catch (error) {
-        console.error("Add to cart error:", error);
         return res.status(500).json({
             message: "Failed to add product to cart",
             error: error.message
@@ -64,24 +77,20 @@ exports.addToCartController = async (req, res) => {
     }
 };
 
-// Get cart items with product details
+
+// Get cart items
 exports.getCartController = async (req, res) => {
     try {
-        const userEmail = req.payload;
+        console.log("Inside getCartController");
 
-        const [items] = await pool.query(
-            `SELECT c.id as cart_id, c.quantity, c.created_at,
-                    p.id as product_id, p.name, p.model, p.brand, p.category, p.type, p.price, p.image
-             FROM carts c
-             JOIN products p ON c.product_id = p.id
-             WHERE c.user_email = ?
-             ORDER BY c.id DESC`,
-            [userEmail]
-        );
+        const userMail = req.payload;
 
-        return res.status(200).json(items);
+        const allCartItems = await carts.find({ userMail })
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json(allCartItems);
+
     } catch (error) {
-        console.error("Get cart error:", error);
         return res.status(500).json({
             message: "Failed to fetch cart items",
             error: error.message
@@ -89,32 +98,35 @@ exports.getCartController = async (req, res) => {
     }
 };
 
+
 // Increment quantity
 exports.incrementQuantityController = async (req, res) => {
     try {
-        const userEmail = req.payload;
+        console.log("Inside incrementQuantityController");
+
+        const userMail = req.payload;
         const { cartId } = req.params;
 
-        const [existing] = await pool.query(
-            "SELECT * FROM carts WHERE id = ? AND user_email = ? LIMIT 1",
-            [cartId, userEmail]
-        );
+        const cartItem = await carts.findOne({
+            _id: cartId,
+            userMail
+        });
 
-        if (existing.length === 0) {
+        if (!cartItem) {
             return res.status(404).json({
                 message: "Cart item not found"
             });
         }
 
-        const newQty = existing[0].quantity + 1;
-        await pool.query("UPDATE carts SET quantity = ? WHERE id = ?", [newQty, cartId]);
+        cartItem.quantity += 1;
+        await cartItem.save();
 
         return res.status(200).json({
             message: "Quantity increased",
-            quantity: newQty
+            data: cartItem
         });
+
     } catch (error) {
-        console.error("Increment quantity error:", error);
         return res.status(500).json({
             message: "Failed to increment quantity",
             error: error.message
@@ -122,41 +134,46 @@ exports.incrementQuantityController = async (req, res) => {
     }
 };
 
+
 // Decrement quantity
 exports.decrementQuantityController = async (req, res) => {
     try {
-        const userEmail = req.payload;
+        console.log("Inside decrementQuantityController");
+
+        const userMail = req.payload;
         const { cartId } = req.params;
 
-        const [existing] = await pool.query(
-            "SELECT * FROM carts WHERE id = ? AND user_email = ? LIMIT 1",
-            [cartId, userEmail]
-        );
+        const cartItem = await carts.findOne({
+            _id: cartId,
+            userMail
+        });
 
-        if (existing.length === 0) {
+        if (!cartItem) {
             return res.status(404).json({
                 message: "Cart item not found"
             });
         }
 
-        if (existing[0].quantity > 1) {
-            const newQty = existing[0].quantity - 1;
-            await pool.query("UPDATE carts SET quantity = ? WHERE id = ?", [newQty, cartId]);
+        if (cartItem.quantity > 1) {
+            cartItem.quantity -= 1;
+            await cartItem.save();
 
             return res.status(200).json({
                 message: "Quantity decreased",
-                quantity: newQty
+                data: cartItem
             });
         }
 
-        // If quantity is 1, remove from cart
-        await pool.query("DELETE FROM carts WHERE id = ? AND user_email = ?", [cartId, userEmail]);
+        await carts.findOneAndDelete({
+            _id: cartId,
+            userMail
+        });
 
         return res.status(200).json({
             message: "Product removed from cart"
         });
+
     } catch (error) {
-        console.error("Decrement quantity error:", error);
         return res.status(500).json({
             message: "Failed to decrement quantity",
             error: error.message
@@ -164,28 +181,32 @@ exports.decrementQuantityController = async (req, res) => {
     }
 };
 
+
 // Remove one cart item
 exports.removeCartItemController = async (req, res) => {
     try {
-        const userEmail = req.payload;
+        console.log("Inside removeCartItemController");
+
+        const userMail = req.payload;
         const { cartId } = req.params;
 
-        const [result] = await pool.query(
-            "DELETE FROM carts WHERE id = ? AND user_email = ?",
-            [cartId, userEmail]
-        );
+        const removedItem = await carts.findOneAndDelete({
+            _id: cartId,
+            userMail
+        });
 
-        if (result.affectedRows === 0) {
+        if (!removedItem) {
             return res.status(404).json({
                 message: "Cart item not found"
             });
         }
 
         return res.status(200).json({
-            message: "Product removed from cart"
+            message: "Product removed from cart",
+            data: removedItem
         });
+
     } catch (error) {
-        console.error("Remove cart item error:", error);
         return res.status(500).json({
             message: "Failed to remove cart item",
             error: error.message
@@ -193,19 +214,22 @@ exports.removeCartItemController = async (req, res) => {
     }
 };
 
-// Remove all cart items for user
+
+// Remove all cart items for the logged-in user
 exports.removeAllCartItemsController = async (req, res) => {
     try {
-        const userEmail = req.payload;
+        console.log("Inside removeAllCartItemsController");
 
-        const [result] = await pool.query("DELETE FROM carts WHERE user_email = ?", [userEmail]);
+        const userMail = req.payload;
+
+        const result = await carts.deleteMany({ userMail });
 
         return res.status(200).json({
             message: "All cart items removed",
-            deletedCount: result.affectedRows
+            deletedCount: result.deletedCount
         });
+
     } catch (error) {
-        console.error("Clear cart error:", error);
         return res.status(500).json({
             message: "Failed to clear cart",
             error: error.message

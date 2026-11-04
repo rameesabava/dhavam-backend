@@ -1,64 +1,90 @@
-const express = require('express');
-const userController = require('../controllers/userController');
-const productController = require('../controllers/productController');
-const cartController = require('../controllers/cartController');
-const orderController = require('../controllers/orderController');
-const reviewController = require('../controllers/reviewController');
-const adminMiddleware = require('../middlewares/adminMiddleware');
-const jwtMiddleware = require('../middlewares/jwtMiddleware');
-const multerMiddleware = require('../middlewares/multerMiddleware');
+const express = require('express')
+const userController = require('../controllers/userController')
+const productController = require('../controllers/productController')
+const cartController = require('../controllers/cartController')
+const orderController = require('../controllers/orderController')
+const adminMiddleware = require('../middlewares/adminMiddleware')
+const jwtMiddleware = require('../middlewares/jwtMiddleware')
+const multerMiddleware = require('../middlewares/multerMiddleware')
 
-const router = new express.Router();
+const router = new express.Router()
 
-// ------- Public routes -------------------------
-// Register
-router.post('/register', userController.registerController);
-// Login
-router.post('/login', userController.loginController);
-// Get all products (supports ?search=&category=&brand=)
-router.get('/products', productController.getAllProductsController);
-// View single product (public or authenticated)
-router.get('/product/:id', productController.viewProductController);
-// Get product reviews
-router.get('/reviews/:productId', reviewController.getProductReviewsController);
+// -------unauthorised-------------------------
+// register
+router.post('/register',userController.registerController)
+// login
+router.post('/login',userController.loginController)
 
-// ------------------- Admin routes ----------------------------------------
-// Add product
-router.post('/product/add', adminMiddleware, multerMiddleware.single('image'), productController.addProductController);
-// Update product
-router.put('/product/:id', adminMiddleware, multerMiddleware.single('image'), productController.updateProductController);
-// Delete product
-router.delete("/product/:id", adminMiddleware, productController.deleteProductController);
-// Get all users
-router.get('/admin/users', adminMiddleware, userController.getAllUsersController);
-// Delete user
-router.delete("/admin/users/:id", adminMiddleware, userController.deleteUserController);
-// Get all orders
-router.get('/admin/orders', adminMiddleware, orderController.getAllOrdersController);
-// Update status of order (Shipped / Delivered)
-router.put("/order/status/:id", adminMiddleware, orderController.updateOrderStatusController);
+// get products
+router.get('/products', productController.getAllProductsController)
 
-// ------------------------- User (Authenticated) routes -------------------
+
+// -------------------admin----------------------------------------
+// add product
+router.post('/product/add',adminMiddleware,multerMiddleware.single('image'), productController.addProductController)
+
+// update product
+router.put('/product/:id',adminMiddleware,multerMiddleware.single('image'), productController.updateProductController)
+
+// get all users
+router.get('/admin/users', adminMiddleware, userController.getAllUsersController)
+
+// get all orders
+router.get('/admin/orders', adminMiddleware, orderController.getAllOrdersController)
+
+// view order
+router.get('/order/:id', adminMiddleware, orderController.viewOrderController)
+
+// update status of order
+router.put("/order/status/:id", adminMiddleware,orderController.updateOrderStatusController);
+
+// to delete user
+router.delete("/admin/users/:id",adminMiddleware,userController.deleteUserController);
+
+
+// -------------------------user------------------------------------
+
+// view plant
+router.get('/product/:id', jwtMiddleware, productController.viewProductController)
+
+// add plant to cart
+router.post('/cart/add',jwtMiddleware, cartController.addToCartController)
+
+// get cart items
+router.get('/cart', jwtMiddleware, cartController.getCartController)
+
+// incremet quantity
+router.put('/cart/increment/:cartId', jwtMiddleware, cartController.incrementQuantityController)
+
+// decremet quantity
+router.put('/cart/decrement/:cartId', jwtMiddleware, cartController.decrementQuantityController)
+
+// remove cart item
+router.delete('/cart/remove/:cartId', jwtMiddleware, cartController.removeCartItemController)
+
+// remove all cart items
+router.delete('/cart/remove', jwtMiddleware, cartController.removeAllCartItemsController)
+
+// add order
+router.post('/order/add',jwtMiddleware, orderController.addOrderController)
+
+// Get logged-in user's orders
+router.get('/myOrders',jwtMiddleware,orderController.getMyOrdersController);
+
+// delete product
+router.delete("/product/:id",adminMiddleware,productController.deleteProductController);
+
+// my orders
+router.put(
+  "/myOrders/cancel/:id",
+  jwtMiddleware,
+  orderController.cancelMyOrderController
+);
+
 // View logged-in user's profile
-router.get("/profile", jwtMiddleware, userController.getMyProfileController);
+router.get("/profile",jwtMiddleware,userController.getMyProfileController);
+
 // Update logged-in user's profile
-router.put("/profile", jwtMiddleware, userController.updateMyProfileController);
+router.put("/profile",jwtMiddleware,userController.updateMyProfileController);
 
-// Cart
-router.post('/cart/add', jwtMiddleware, cartController.addToCartController);
-router.get('/cart', jwtMiddleware, cartController.getCartController);
-router.put('/cart/increment/:cartId', jwtMiddleware, cartController.incrementQuantityController);
-router.put('/cart/decrement/:cartId', jwtMiddleware, cartController.decrementQuantityController);
-router.delete('/cart/remove/:cartId', jwtMiddleware, cartController.removeCartItemController);
-router.delete('/cart/remove', jwtMiddleware, cartController.removeAllCartItemsController);
-
-// Orders
-router.post('/order/add', jwtMiddleware, orderController.addOrderController);
-router.get('/myOrders', jwtMiddleware, orderController.getMyOrdersController);
-router.get('/order/:id', jwtMiddleware, orderController.viewOrderController);
-router.put("/myOrders/cancel/:id", jwtMiddleware, orderController.cancelMyOrderController);
-
-// Reviews
-router.post('/review/add', jwtMiddleware, reviewController.addReviewController);
-
-module.exports = router;
+module.exports = router
