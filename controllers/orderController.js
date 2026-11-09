@@ -1,146 +1,98 @@
-const orders = require('../models/orderModel')
+// controllers/orderController.js
+const orderService = require('../services/orderService');
 
-// // add order
+/** Create a new order (checkout) */
 exports.addOrderController = async (req, res) => {
-    console.log("Inside addOrderController");
+  try {
+    const userId = req.payload; // user ID from JWT middleware
+    const { username, phone, address, paymentMethod, items } = req.body;
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Cart items are required.' });
+    }
+    const order = await orderService.createOrder({
+      userId: Number(userId),
+      username,
+      phone,
+      address,
+      paymentMethod,
+      items,
+    });
+    return res.status(201).json(order);
+  } catch (error) {
+    console.error('Create order error:', error);
+    return res.status(500).json({ message: error.message });
+  }
+};
 
-    const userMail = req.payload
-    const { username, phone, items, address, paymentMethod } = req.body
+/** Admin: list all orders */
+exports.getAllOrdersController = async (req, res) => {
+  try {
+    const orders = await orderService.listOrders();
+    return res.status(200).json(orders);
+  } catch (error) {
+    console.error('List orders error:', error);
+    return res.status(500).json({ message: error.message });
+  }
+};
 
-    const newOrder = await orders.create({ userMail, username, phone, items, address,  paymentMethod })
-    res.status(201).json(newOrder)
+/** Admin or user: view single order */
+exports.viewOrderController = async (req, res) => {
+  try {
+    const order = await orderService.getOrderById(Number(req.params.id));
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    return res.status(200).json(order);
+  } catch (error) {
+    console.error('View order error:', error);
+    return res.status(500).json({ message: error.message });
+  }
+};
 
-}
-
-// // get all orders
-exports.getAllOrdersController = async (req,res)=>{
-    console.log("Inside getAllOrdersController");
-    const allOrders = await orders.find().sort({createdAt:-1})
-    res.status(200).json(allOrders)
-}
-
-// to view single order details
-exports.viewOrderController = async (req,res)=>{
-    console.log("Inside viewOrderController");
-    const {id} = req.params
-    const orderDetails = await orders.findById({_id:id})
-    res.status(200).json(orderDetails)
-}
-
-
-// Admin: update an order from Placed -> Shipped
-// or Shipped -> Delivered.
+/** Admin: update order status */
 exports.updateOrderStatusController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { orderStatus } = req.body;
-
-    if (!["Shipped", "Delivered"].includes(orderStatus)) {
-      return res.status(400).json({
-        message: "Status must be Shipped or Delivered.",
-      });
-    }
-
-    const order = await orders.findById(id);
-
-    if (!order) {
-      return res.status(404).json({
-        message: "Order not found.",
-      });
-    }
-
-    // Only allow the next valid status transition.
-    if (
-      order.orderStatus === "Placed" &&
-      orderStatus === "Shipped"
-    ) {
-      order.orderStatus = "Shipped";
-    } else if (
-      order.orderStatus === "Shipped" &&
-      orderStatus === "Delivered"
-    ) {
-      order.orderStatus = "Delivered";
-    } else {
-      return res.status(400).json({
-        message: `Cannot change order status from ${order.orderStatus} to ${orderStatus}.`,
-      });
-    }
-
-    await order.save();
-
-    return res.status(200).json({
-      message: `Order marked as ${order.orderStatus}.`,
-      order,
-    });
+    const { status } = req.body; // expects enum value (e.g., "SHIPPED")
+    const updated = await orderService.updateOrderStatus(Number(id), status);
+    return res.status(200).json(updated);
   } catch (error) {
-    console.error("Update order status error:", error);
-
-    return res.status(500).json({
-      message: "Failed to update order status.",
-    });
+    console.error('Update order status error:', error);
+    return res.status(500).json({ message: error.message });
   }
 };
 
-// Customer: cancel their own order before it ships.
+/** Customer: get their own orders */
+exports.getMyOrdersController = async (req, res) => {
+  try {
+    const userId = req.payload;
+    const orders = await orderService.getUserOrders(Number(userId));
+    return res.status(200).json(orders);
+  } catch (error) {
+    console.error('Get my orders error:', error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+/** Customer: cancel own order (only if PENDING) */
 exports.cancelMyOrderController = async (req, res) => {
   try {
     const { id } = req.params;
-
-    // jwtMiddleware must set req.payload to the authenticated
-    // customer's email, as used by addOrderController.
-    const userMail = req.payload;
-
-    const order = await orders.findOne({
-      _id: id,
-      userMail,
-    });
-
-    if (!order) {
-      return res.status(404).json({
-        message: "Order not found.",
-      });
+    const order = await orderService.getOrderById(Number(id));
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    if (order.userId !== req.payload) {
+      return res.status(403).json({ message: 'Not authorized.' });
     }
-
-    if (order.orderStatus !== "Placed") {
-      return res.status(400).json({
-        message:
-          "You can only cancel an order before it has been shipped.",
-      });
+    if (order.status !== 'PENDING') {
+      return res
+        .status(400)
+        .json({ message: 'Only pending orders can be cancelled.' });
     }
-
-    order.orderStatus = "Cancelled";
-    await order.save();
-
-    return res.status(200).json({
-      message: "Your order has been cancelled.",
-      order,
-    });
+    const cancelled = await orderService.updateOrderStatus(
+      Number(id),
+      'CANCELLED'
+    );
+    return res.status(200).json(cancelled);
   } catch (error) {
-    console.error("Cancel order error:", error);
-
-    return res.status(500).json({
-      message: "Failed to cancel order.",
-    });
+    console.error('Cancel order error:', error);
+    return res.status(500).json({ message: error.message });
   }
-};
-
-
-// Get orders belonging to the logged-in user
-exports.getMyOrdersController = async (req, res) => {
-    try {
-        console.log("Inside getMyOrdersController");
-
-        const userMail = req.payload;
-
-        const myOrders = await orders
-            .find({ userMail })
-            .sort({ createdAt: -1 });
-
-        res.status(200).json(myOrders);
-    } catch (error) {
-        console.error("Get my orders error:", error);
-        res.status(500).json({
-            message: "Failed to fetch your orders"
-        });
-    }
 };

@@ -1,5 +1,5 @@
 require('dotenv').config()
-require('./config/db')
+// Removed Sequelize config – using Prisma client instead
 const express = require('express')
 const cors = require('cors')
 const routes = require('./routes/allRoutes')
