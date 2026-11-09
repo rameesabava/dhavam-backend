@@ -3,8 +3,15 @@ const { URL } = require('url');
 
 // Parse DATABASE_URL (MySQL/TiDB style) into a config object for mysql2
 // Example: mysql://user:pass@host:4000/database
-const dbUrl = new URL(process.env.DATABASE_URL.replace(/^"|"$/g, ''));
-const config = {
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error(
+    "DATABASE_URL is missing. Please configure it in Render Environment Variables."
+  );
+}
+
+const dbUrl = new URL(databaseUrl.replace(/^"|"$/g, "")); const config = {
   host: dbUrl.hostname,
   port: dbUrl.port ? Number(dbUrl.port) : 3306,
   user: decodeURIComponent(dbUrl.username),
