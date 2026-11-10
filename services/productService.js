@@ -1,66 +1,57 @@
 // services/productService.js
-
-// Base API URL (used to build public image URLs)
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-
-// Helper: turn a stored filename into a fully‑qualified URL
-function publicImageUrl(filename) {
-  if (!filename) return '';
-  // If the DB already contains a complete URL, just return it
-  if (/^https?:\/\//i.test(filename)) return filename;
-  // Encode any special characters (spaces, etc.)
-  const encoded = encodeURIComponent(filename);
-  return `${API_URL}/uploads/${encoded}`;
-}
-
 const db = require('./dbClient');
 
-/** Helper to execute a query and return rows */
+// Public URL of THIS backend. Set PUBLIC_API_URL in .env when you deploy.
+const API_URL = (
+  process.env.PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  `http://localhost:${process.env.PORT || 5000}`
+).replace(/\/+$/, '');
+
+function publicImageUrl(filename) {
+  if (!filename) return '';
+  if (/^https?:\/\//i.test(filename)) return filename;
+  return `${API_URL}/uploads/${encodeURIComponent(filename)}`;
+}
+
 async function query(sql, params = []) {
   const [rows] = await db.execute(sql, params);
   return rows;
 }
 
-/** Create a new product (admin) */
-exports.createProduct = async ({ name, description, category, imageUrl, sizes = [] }) => {
-  const result = await query(
-    `INSERT INTO Product (name, description, category, imageUrl) VALUES (?,?,?,?)`,
-    [name, description, category, imageUrl]
-  );
-  const productId = result.insertId;
+/* One shape for every page: works with both the new and the old field names */
+function formatProduct(p, sizes) {
+  const url = publicImageUrl(p.imageUrl);
+  return {
+    ...p,
+    _id: String(p.id),
+    group: String(p.category || '').toLowerCase(), // "whole" | "ground" | "combo"
+    imageUrl: url,
+    image: url,
+    sizes: sizes.map((s) => ({ id: s.id, size: s.size, price: Number(s.price) })),
+  };
+}
 
-  // Insert size/price rows
-  for (const s of sizes) {
-    await query(
-      `INSERT INTO ProductSize (productId, size, price) VALUES (?,?,?)`,
-      [productId, s.size, s.price]
-    );
-  }
+// ---- keep your existing createProduct here ----
 
-  // Return the freshly created product (image URL is fixed by getProductById)
-  return await exports.getProductById(productId);
-};
-
-/** Retrieve a single product, including its sizes */
 exports.getProductById = async (id) => {
   const [product] = await query('SELECT * FROM Product WHERE id = ?', [id]);
   if (!product) return null;
   const sizes = await query('SELECT id, size, price FROM ProductSize WHERE productId = ?', [id]);
-  product.sizes = sizes;
-  product.imageUrl = publicImageUrl(product.imageUrl);
-  return product;
+  return formatProduct(product, sizes);
 };
 
-/** List all products (public) */
 exports.listProducts = async () => {
-  const products = await query('SELECT * FROM Product');
+  const products = await query('SELECT * FROM Product ORDER BY id DESC');
+  const result = [];
   for (const p of products) {
-    p.sizes = await query('SELECT id, size, price FROM ProductSize WHERE productId = ?', [p.id]);
-    p.imageUrl = publicImageUrl(p.imageUrl);
+    const sizes = await query('SELECT id, size, price FROM ProductSize WHERE productId = ?', [p.id]);
+    result.push(formatProduct(p, sizes));
   }
-  return products;
+  return result;
 };
 
+// ---- keep your existing updateProduct and deleteProduct here ----
 /** Update an existing product (admin) */
 exports.updateProduct = async (id, data) => {
   const { name, description, category, imageUrl, sizes } = data;

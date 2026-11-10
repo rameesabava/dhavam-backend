@@ -10,8 +10,7 @@ exports.registerController = async (req, res) => {
     return res.status(201).json(result);
   } catch (error) {
     console.error('Register error:', error);
-    return res.status(error.status || 500).json({ message: error.message });
-  }
+return res.status(error.status || 500).json({ message: error.message });  }
 };
 
 // User login
@@ -52,7 +51,7 @@ exports.deleteUserController = async (req, res) => {
 // Get logged‑in user's profile
 exports.getMyProfileController = async (req, res) => {
   try {
-    const email = req.payload; // set by JWT middleware
+const email = req.email;
     const user = await userService.getProfile(email);
     return res.status(200).json({ success: true, user });
   } catch (error) {
@@ -64,7 +63,7 @@ exports.getMyProfileController = async (req, res) => {
 // Update profile (and optionally password)
 exports.updateMyProfileController = async (req, res) => {
   try {
-    const email = req.payload;
+const email = req.email; 
     const result = await userService.updateProfile(email, req.body);
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
