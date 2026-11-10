@@ -51,7 +51,7 @@ router.get('/product/:id', jwtMiddleware, productController.viewProductControlle
 router.post('/cart/add',jwtMiddleware, cartController.addToCartController)
 
 // get cart items
-router.get('/cart', jwtMiddleware, cartController.cart)
+router.get('/cart', jwtMiddleware, cartController.getCartController)
 
 // incremet quantity
 router.put('/cart/increment/:cartId', jwtMiddleware, cartController.incrementQuantityController)

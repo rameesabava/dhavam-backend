@@ -29,8 +29,7 @@ async function query(sql, params = []) {
 }
 
 // Never SELECT the image bytes in normal queries
-const PRODUCT_COLUMNS =
-  'id, name, description, category, imageUrl, createdAt, updatedAt';
+const PRODUCT_COLUMNS = 'id, name, description, category, imageUrl';
 
 function formatProduct(p, sizes) {
   const url = publicImageUrl(p.imageUrl);
