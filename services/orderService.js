@@ -61,7 +61,7 @@ exports.getOrdersByUser = async (userId) => {
 };
 
 /* Admin: list all orders */
-exports.listAllOrders = async () => {
+exports.listOrders = async () => {
   const orders = await query('SELECT * FROM `Order`');
   for (const o of orders) {
     o.items = await query('SELECT * FROM OrderItem WHERE orderId = ?', [o.id]);
