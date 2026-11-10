@@ -8,6 +8,7 @@ const morgan = require('morgan');
 const path = require('path');
 const allRoutes = require('./routes/allRoutes');
 const jwtMiddleware = require('./middlewares/jwtMiddleware'); // protects routes that need auth
+const fs = require('fs');
 
 const app = express();
 
@@ -20,10 +21,20 @@ app.use(morgan('dev'));    // Simple request logger
 app.use('/', allRoutes);  // allRoutes already includes both public & protected routes
 // Note: jwtMiddleware is applied inside individual route definitions where required
 // Serve the uploads folder (where product images are stored)
-app.use(
-    '/uploads',
-    express.static(path.join(__dirname, 'uploads'))
-);
+app.use('/uploads', (req, res, next) => {
+    // Resolve the absolute file path on disk
+    const filePath = path.join(__dirname, 'uploads', decodeURIComponent(req.path));
+    // If the file exists, let express.static handle it
+    if (fs.existsSync(filePath)) {
+        return next();
+    }
+    // Otherwise, serve a placeholder image
+    const placeholderPath = path.join(__dirname, 'public', 'placeholder.png');
+    res.sendFile(placeholderPath);
+});
+// Now let Express serve the actual files (only reached when the file exists)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Global error handler (fallback)
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
