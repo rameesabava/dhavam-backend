@@ -1,4 +1,15 @@
 // services/productService.js
+
+// services/productService.js (add at top)
+const { API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000' } = process.env;
+
+// Helper to build the public image URL
+function publicImageUrl(filename) {
+  if (!filename) return '';
+  // If the filename already looks like a URL, return it unchanged
+  if (/^https?:\/\//i.test(filename)) return filename;
+  return `${API_URL}/uploads/${filename}`;
+}
 const db = require('./dbClient');
 
 /* Helper */
@@ -29,12 +40,25 @@ exports.createProduct = async ({ name, description, category, imageUrl, sizes = 
 };
 
 /* Get product by id (includes sizes) */
+// Example: getProductById
 exports.getProductById = async (id) => {
   const [product] = await query('SELECT * FROM Product WHERE id = ?', [id]);
   if (!product) return null;
   const sizes = await query('SELECT id, size, price FROM ProductSize WHERE productId = ?', [id]);
   product.sizes = sizes;
+  // Convert image filename → full URL
+  product.imageUrl = publicImageUrl(product.imageUrl);
   return product;
+};
+
+// Example: listProducts
+exports.listProducts = async () => {
+  const products = await query('SELECT * FROM Product');
+  for (const p of products) {
+    p.sizes = await query('SELECT id, size, price FROM ProductSize WHERE productId = ?', [p.id]);
+    p.imageUrl = publicImageUrl(p.imageUrl);
+  }
+  return products;
 };
 
 
