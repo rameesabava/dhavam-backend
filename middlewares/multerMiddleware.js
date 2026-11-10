@@ -16,7 +16,8 @@ const storage = multer.diskStorage({
     },
 
     filename: (req, file, cb) => {
-        cb(null, `Image-${Date.now()}-${file.originalname}`);
+        const safeName = file.originalname.replace(/\s+/g, "_");
+        cb(null, `Image-${Date.now()}-${safeName}`);
     }
 });
 

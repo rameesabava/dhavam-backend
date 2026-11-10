@@ -3,12 +3,18 @@
 // services/productService.js (add at top)
 const { API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000' } = process.env;
 
-// Helper to build the public image URL
 function publicImageUrl(filename) {
   if (!filename) return '';
-  // If the filename already looks like a URL, return it unchanged
+  // If already a full URL, return as‑is
   if (/^https?:\/\//i.test(filename)) return filename;
-  return `${API_URL}/uploads/${filename}`;
+  // Encode special characters (e.g. spaces) for a safe URL
+  const encoded = encodeURIComponent(filename);
+  return `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/uploads/${encoded}`;
+}
+function publicImageUrl(filename) {
+  if (!filename) return "";
+  if (/^https?:\/\//i.test(filename)) return filename;
+  return `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/uploads/${filename}`;
 }
 const db = require('./dbClient');
 
