@@ -1,7 +1,6 @@
 // services/productService.js
 const db = require('./dbClient');
 
-// Public URL of THIS backend (only used for old filename-only images)
 const API_URL = (
   process.env.PUBLIC_API_URL ||
   process.env.RENDER_EXTERNAL_URL ||
@@ -14,60 +13,72 @@ function httpError(message, status = 400) {
   return e;
 }
 
-// Full URLs (Cloudinary) are returned unchanged; bare filenames get the /uploads path
-function publicImageUrl(filename) {
-  if (!filename) return '';
-  if (/^https?:\/\//i.test(filename)) return filename;
-  return `${API_URL}/uploads/${encodeURIComponent(filename)}`;
+// Full URLs stay as they are, "/products/5/image" becomes a full URL,
+// and old filename-only values fall back to /uploads
+function publicImageUrl(value) {
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith('/')) return `${API_URL}${value}`;
+  return `${API_URL}/uploads/${encodeURIComponent(value)}`;
 }
+exports.publicImageUrl = publicImageUrl;
 
 async function query(sql, params = []) {
   const [rows] = await db.execute(sql, params);
   return rows;
 }
 
-// One shape for every page
+// Never SELECT the image bytes in normal queries
+const PRODUCT_COLUMNS =
+  'id, name, description, category, imageUrl, createdAt, updatedAt';
+
 function formatProduct(p, sizes) {
   const url = publicImageUrl(p.imageUrl);
   return {
     ...p,
     _id: String(p.id),
-    group: String(p.category || '').toLowerCase(), // "whole" | "ground" | "combo"
+    group: String(p.category || '').toLowerCase(),
     imageUrl: url,
     image: url,
     sizes: sizes.map((s) => ({ id: s.id, size: s.size, price: Number(s.price) })),
   };
 }
 
-/** Create a new product (admin) */
-exports.createProduct = async ({ name, description, category, imageUrl, sizes = [] }) => {
+/** Create a product. imageBuffer/imageType come from the uploaded file. */
+exports.createProduct = async ({ name, description, category, imageBuffer, imageType, sizes = [] }) => {
   const result = await query(
-    'INSERT INTO Product (name, description, category, imageUrl) VALUES (?,?,?,?)',
-    [name, description ?? null, category, imageUrl ?? null]
+    'INSERT INTO Product (name, description, category, imageData, imageType) VALUES (?,?,?,?,?)',
+    [name, description ?? null, category, imageBuffer ?? null, imageType ?? null]
   );
   const productId = result.insertId;
 
+  if (imageBuffer) {
+    await query('UPDATE Product SET imageUrl = ? WHERE id = ?', [
+      `/products/${productId}/image`,
+      productId,
+    ]);
+  }
+
   for (const s of sizes) {
-    await query(
-      'INSERT INTO ProductSize (productId, size, price) VALUES (?,?,?)',
-      [productId, s.size, s.price]
-    );
+    await query('INSERT INTO ProductSize (productId, size, price) VALUES (?,?,?)', [
+      productId,
+      s.size,
+      s.price,
+    ]);
   }
 
   return await exports.getProductById(productId);
 };
 
-/** Retrieve a single product, including its sizes */
 exports.getProductById = async (id) => {
-  const [product] = await query('SELECT * FROM Product WHERE id = ?', [id]);
+  const [product] = await query(`SELECT ${PRODUCT_COLUMNS} FROM Product WHERE id = ?`, [id]);
   if (!product) return null;
   const sizes = await query('SELECT id, size, price FROM ProductSize WHERE productId = ?', [id]);
   return formatProduct(product, sizes);
 };
 
-/** List all products (public) */
 exports.listProducts = async () => {
-  const products = await query('SELECT * FROM Product ORDER BY id DESC');
+  const products = await query(`SELECT ${PRODUCT_COLUMNS} FROM Product ORDER BY id DESC`);
   const result = [];
   for (const p of products) {
     const sizes = await query('SELECT id, size, price FROM ProductSize WHERE productId = ?', [p.id]);
@@ -76,24 +87,31 @@ exports.listProducts = async () => {
   return result;
 };
 
-/** Update an existing product (admin) */
+/** Raw image bytes for the image route */
+exports.getProductImage = async (id) => {
+  const [row] = await query('SELECT imageData, imageType FROM Product WHERE id = ?', [id]);
+  if (!row || !row.imageData) return null;
+  return { data: row.imageData, type: row.imageType || 'image/jpeg' };
+};
+
 exports.updateProduct = async (id, data) => {
-  const { name, description, category, imageUrl, sizes } = data;
+  const { name, description, category, imageBuffer, imageType, sizes } = data;
   const set = [];
   const params = [];
 
   if (name !== undefined) { set.push('name = ?'); params.push(name); }
   if (description !== undefined) { set.push('description = ?'); params.push(description); }
   if (category !== undefined) { set.push('category = ?'); params.push(category); }
-  if (imageUrl !== undefined) { set.push('imageUrl = ?'); params.push(imageUrl); }
+  if (imageBuffer) {
+    set.push('imageData = ?', 'imageType = ?', 'imageUrl = ?');
+    params.push(imageBuffer, imageType || 'image/jpeg', `/products/${id}/image`);
+  }
 
   if (set.length > 0) {
     await query(`UPDATE Product SET ${set.join(', ')} WHERE id = ?`, [...params, id]);
   }
 
-  // Replace sizes if supplied
   if (Array.isArray(sizes)) {
-    // Validate everything first so a bad row doesn't wipe the old sizes
     const clean = sizes.map((s) => {
       if (!s || !s.size || s.price === undefined || s.price === null || s.price === '') {
         throw httpError('Each size must have a size name and price.');
@@ -107,22 +125,17 @@ exports.updateProduct = async (id, data) => {
 
     await query('DELETE FROM ProductSize WHERE productId = ?', [id]);
     for (const s of clean) {
-      await query(
-        'INSERT INTO ProductSize (productId, size, price) VALUES (?,?,?)',
-        [id, s.size, s.price]
-      );
+      await query('INSERT INTO ProductSize (productId, size, price) VALUES (?,?,?)', [id, s.size, s.price]);
     }
   }
 
   return await exports.getProductById(id);
 };
 
-/** Delete a product (admin). Refuses if it appears in past orders. */
 exports.deleteProduct = async (id) => {
   const used = await query('SELECT id FROM OrderItem WHERE productId = ? LIMIT 1', [id]);
-  if (used.length) {
-    throw httpError('Product has past orders and cannot be deleted.');
-  }
+  if (used.length) throw httpError('Product has past orders and cannot be deleted.');
+
   await query('DELETE FROM CartItem WHERE productId = ?', [id]);
   await query('DELETE FROM ProductSize WHERE productId = ?', [id]);
   await query('DELETE FROM Product WHERE id = ?', [id]);

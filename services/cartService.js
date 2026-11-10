@@ -1,5 +1,6 @@
 // services/cartService.js
 const db = require('./dbClient');
+const { publicImageUrl } = require('./productService');
 
 async function query(sql, params = []) {
   const [rows] = await db.execute(sql, params);
@@ -53,7 +54,12 @@ exports.getCart = async (userId) => {
      ORDER BY ci.id`,
     [userId]
   );
-  return items.map((i) => ({ ...i, _id: String(i.id), price: Number(i.price) }));
+return items.map((i) => ({
+  ...i,
+  _id: String(i.id),
+  price: Number(i.price),
+  productImage: publicImageUrl(i.productImage),
+}));
 };
 
 exports.removeFromCart = async (cartItemId, userId) => {

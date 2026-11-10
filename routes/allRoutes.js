@@ -87,6 +87,9 @@ router.get("/profile",jwtMiddleware,userController.getMyProfileController);
 // Update logged-in user's profile
 router.put("/profile",jwtMiddleware,userController.updateMyProfileController);
 
+// product image (public)
+router.get('/products/:id/image', productController.getProductImageController)
+
 const checks = {
   user: [
     'registerController',

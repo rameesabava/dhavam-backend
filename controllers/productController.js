@@ -30,64 +30,42 @@ exports.addProductController = async (req, res) => {
   try {
     const { name, description, group, sizes } = req.body;
 
-    // 1. Image must be a real uploaded file (form field name: "image")
     if (!req.file) {
-      return res.status(400).json({
-        message: 'Product image file is required (field name: "image").',
-      });
+      return res.status(400).json({ message: 'Product image file is required (field name: "image").' });
     }
-    const uploadimage = req.file.filename;
-
-    // 2. Basic field validation
     if (!name || !description) {
-      return res.status(400).json({
-        message: 'Name and description are required.',
-      });
+      return res.status(400).json({ message: 'Name and description are required.' });
     }
 
-    // 3. Category validation
-    const allowedCategories = ['WHOLE', 'GROUND', 'COMBO'];
     const category = (group || 'WHOLE').toUpperCase();
-    if (!allowedCategories.includes(category)) {
-      return res.status(400).json({
-        message: 'Invalid category. Use WHOLE, GROUND or COMBO.',
-      });
+    if (!['WHOLE', 'GROUND', 'COMBO'].includes(category)) {
+      return res.status(400).json({ message: 'Invalid category. Use WHOLE, GROUND or COMBO.' });
     }
 
-    // 4. Sizes validation: must be [{ size, price }]
     const parsedSizes = parseSizes(sizes);
     if (!parsedSizes.length) {
-      return res.status(400).json({
-        message: 'At least one size with a price is required.',
-      });
+      return res.status(400).json({ message: 'At least one size with a price is required.' });
     }
     for (const s of parsedSizes) {
       const price = Number(s && s.price);
       if (!s || typeof s !== 'object' || !s.size || !Number.isFinite(price) || price < 0) {
-        return res.status(400).json({
-          message: 'Each size must be an object like {"size":"100g","price":50}.',
-        });
+        return res.status(400).json({ message: 'Each size must look like {"size":"100g","price":50}.' });
       }
     }
 
-    // 5. Save
-    const productDetails = await productService.createProduct({
+    const product = await productService.createProduct({
       name: name.trim(),
       description: description.trim(),
       category,
-      imageUrl: req.file.filename,
-      sizes: parsedSizes.map((s) => ({
-        size: String(s.size).trim(),
-        price: Number(s.price),
-      })),
+      imageBuffer: req.file.buffer,
+      imageType: req.file.mimetype,
+      sizes: parsedSizes.map((s) => ({ size: String(s.size).trim(), price: Number(s.price) })),
     });
 
-    return res.status(201).json(productDetails);
+    return res.status(201).json(product);
   } catch (error) {
     console.error('Add product error:', error);
-    return res.status(error.status || 500).json({
-      message: error.message || 'Unable to add product.',
-    });
+    return res.status(error.status || 500).json({ message: error.message || 'Unable to add product.' });
   }
 };
 
@@ -127,80 +105,61 @@ exports.viewProductController = async (req, res) => {
 // ---------------------------------------------------------------------------
 exports.updateProductController = async (req, res) => {
   try {
-    const { id } = req.params;
-    // Build a payload that matches the Prisma schema
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ message: 'Invalid product ID.' });
+
     const payload = {};
     if (req.body.name !== undefined) payload.name = req.body.name.trim();
-    if (req.body.description !== undefined)
-      payload.description = req.body.description.trim();
-    if (req.body.group !== undefined)
-      payload.category = req.body.group ? req.body.group.toUpperCase() : undefined;
-    if (req.file) payload.imageUrl = req.file.filename;
+    if (req.body.description !== undefined) payload.description = req.body.description.trim();
+    if (req.body.group !== undefined && req.body.group) {
+      payload.category = req.body.group.toUpperCase();
+    }
+    if (req.file) {
+      payload.imageBuffer = req.file.buffer;
+      payload.imageType = req.file.mimetype;
+    }
     if (req.body.sizes !== undefined) payload.sizes = parseSizes(req.body.sizes);
 
-    const updatedProduct = await productService.updateProduct(
-      Number(id),
-      payload
-    );
-    return res.status(200).json({
-      message: 'Product updated successfully.',
-      product: updatedProduct,
-    });
+    const product = await productService.updateProduct(id, payload);
+    return res.status(200).json({ message: 'Product updated successfully.', product });
   } catch (error) {
-    console.error("Update product error:", error);
-    console.error("SQL message:", error.sqlMessage);
-    console.error("SQL code:", error.code);
-    console.error("SQL state:", error.sqlState);
-
-    return res.status(500).json({
-      message: error.sqlMessage || error.message || "Unable to update product.",
-      code: error.code,
-    });
+    console.error('Update product error:', error);
+    return res.status(error.status || 500).json({ message: error.message || 'Unable to update product.' });
   }
 };
 
-// ---------------------------------------------------------------------------
-// Delete a product (admin)
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Delete a product (admin)
-// ---------------------------------------------------------------------------
 exports.deleteProductController = async (req, res) => {
   try {
-    const numericId = Number(req.params.id);
-    if (!Number.isInteger(numericId)) {
-      return res.status(400).json({ message: 'Invalid product ID.' });
-    }
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ message: 'Invalid product ID.' });
 
-    const product = await productService.getProductById(numericId);
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found.' });
-    }
+    const product = await productService.getProductById(id);
+    if (!product) return res.status(404).json({ message: 'Product not found.' });
 
-    // Throws a 400 error if the product appears in past orders
-    await productService.deleteProduct(numericId);
-
-    // Remove the uploaded image file (imageUrl is a full URL, so take the file name only)
-    if (product.imageUrl) {
-      const imageName = decodeURIComponent(path.basename(product.imageUrl));
-      const imagePath = path.join(__dirname, '../uploads', imageName);
-      try {
-        await fs.unlink(imagePath);
-      } catch (fileError) {
-        if (fileError.code !== 'ENOENT') {
-          console.error('Could not delete product image:', fileError);
-        }
-      }
-    }
-
-    return res.status(200).json({
-      message: 'Product deleted successfully.',
-      productId: numericId,
-    });
+    await productService.deleteProduct(id); // the image is deleted with the row
+    return res.status(200).json({ message: 'Product deleted successfully.', productId: id });
   } catch (error) {
     console.error('Delete product error:', error);
-    return res.status(error.status || 500).json({
-      message: error.message || 'Unable to delete product.',
+    return res.status(error.status || 500).json({ message: error.message || 'Unable to delete product.' });
+  }
+};
+
+exports.getProductImageController = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).end();
+
+    const image = await productService.getProductImage(id);
+    if (!image) return res.status(404).end();
+
+    res.set({
+      'Content-Type': image.type,
+      'Cache-Control': 'public, max-age=60',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
     });
+    return res.send(image.data);
+  } catch (error) {
+    console.error('Get product image error:', error);
+    return res.status(500).end();
   }
 };

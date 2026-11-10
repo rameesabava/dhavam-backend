@@ -1,5 +1,6 @@
 // services/orderService.js
 const db = require('./dbClient');
+const { publicImageUrl } = require('./productService');
 
 const STATUS_LABEL = {
   PENDING: 'Placed',
@@ -52,8 +53,7 @@ async function withItems(orders) {
       ...i,
       price: Number(i.price),
       productName: i.productName || 'Removed product',
-      productImage: i.productImage || '',
-    });
+productImage: publicImageUrl(i.productImage),    });
   }
 
   return orders.map((o) => ({
