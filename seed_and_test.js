@@ -1,7 +1,7 @@
 // seed_and_test.js
 // Quick script to seed minimal data and exercise core services after TiDB migration.
 // Run with: node seed_and_test.js
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const userService = require('./services/userService');
 const productService = require('./services/productService');
 const cartService = require('./services/cartService');
