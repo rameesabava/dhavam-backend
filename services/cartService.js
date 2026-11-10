@@ -22,7 +22,7 @@ exports.addToCart = async ({ userId, productId, size, quantity = 1 }) => {
 };
 
 /* Get cart for a user (with price lookup) */
-exports.getCart = async (userId) => {
+exports.getCartItems = async (userId) => {
   const items = await query(
     `SELECT ci.id, ci.productId, ci.productName, ci.productImage, ci.size, ci.quantity,
             ps.price
