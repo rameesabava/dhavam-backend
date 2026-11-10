@@ -51,7 +51,7 @@ router.get('/product/:id', jwtMiddleware, productController.viewProductControlle
 router.post('/cart/add',jwtMiddleware, cartController.addToCartController)
 
 // get cart items
-router.get('/cart', jwtMiddleware, cartController.getCartController)
+router.get('/cart', jwtMiddleware, cartController.cart)
 
 // incremet quantity
 router.put('/cart/increment/:cartId', jwtMiddleware, cartController.incrementQuantityController)
@@ -86,5 +86,54 @@ router.get("/profile",jwtMiddleware,userController.getMyProfileController);
 
 // Update logged-in user's profile
 router.put("/profile",jwtMiddleware,userController.updateMyProfileController);
+
+const checks = {
+  user: [
+    'registerController',
+    'loginController',
+    'getAllUsersController',
+    'deleteUserController',
+    'getMyProfileController',
+    'updateMyProfileController'
+  ],
+  product: [
+    'getAllProductsController',
+    'addProductController',
+    'updateProductController',
+    'viewProductController',
+    'deleteProductController'
+  ],
+  cart: [
+    'addToCartController',
+    'cart',
+    'incrementQuantityController',
+    'decrementQuantityController',
+    'removeCartItemController',
+    'removeAllCartItemsController'
+  ],
+  order: [
+    'getAllOrdersController',
+    'viewOrderController',
+    'updateOrderStatusController',
+    'addOrderController',
+    'getMyOrdersController',
+    'cancelMyOrderController'
+  ]
+};
+
+const controllers = {
+  user: userController,
+  product: productController,
+  cart: cartController,
+  order: orderController
+};
+
+for (const [group, names] of Object.entries(checks)) {
+  for (const name of names) {
+    if (typeof controllers[group][name] !== 'function') {
+      console.error(`MISSING CONTROLLER: ${group}.${name}`);
+    }
+  }
+}
 
 module.exports = router
