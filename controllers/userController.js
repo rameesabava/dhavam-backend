@@ -10,7 +10,7 @@ exports.registerController = async (req, res) => {
     return res.status(201).json(result);
   } catch (error) {
     console.error('Register error:', error);
-    return res.status(500).json({ message: error.message });
+    return res.status(error.status || 500).json({ message: error.message });
   }
 };
 

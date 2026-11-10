@@ -6,9 +6,7 @@ exports.addOrderController = async (req, res) => {
   try {
     const userId = req.payload; // user ID from JWT middleware
     const { username, phone, address, paymentMethod, items } = req.body;
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: 'Cart items are required.' });
-    }
+    
     const order = await orderService.createOrder({
       userId: Number(userId),
       username,

@@ -29,26 +29,63 @@ function parseSizes(sizes) {
 exports.addProductController = async (req, res) => {
   try {
     const { name, description, group, sizes } = req.body;
-    const uploadimage = req.file ? req.file.filename : req.body.image;
 
-    if (!name || !description || !uploadimage) {
+    // 1. Image must be a real uploaded file (form field name: "image")
+    if (!req.file) {
       return res.status(400).json({
-        message: 'Name, description, and product image are required.',
+        message: 'Product image file is required (field name: "image").',
+      });
+    }
+    const uploadimage = req.file.filename;
+
+    // 2. Basic field validation
+    if (!name || !description) {
+      return res.status(400).json({
+        message: 'Name and description are required.',
       });
     }
 
+    // 3. Category validation
+    const allowedCategories = ['WHOLE', 'GROUND', 'COMBO'];
+    const category = (group || 'WHOLE').toUpperCase();
+    if (!allowedCategories.includes(category)) {
+      return res.status(400).json({
+        message: 'Invalid category. Use WHOLE, GROUND or COMBO.',
+      });
+    }
+
+    // 4. Sizes validation: must be [{ size, price }]
+    const parsedSizes = parseSizes(sizes);
+    if (!parsedSizes.length) {
+      return res.status(400).json({
+        message: 'At least one size with a price is required.',
+      });
+    }
+    for (const s of parsedSizes) {
+      const price = Number(s && s.price);
+      if (!s || typeof s !== 'object' || !s.size || !Number.isFinite(price) || price < 0) {
+        return res.status(400).json({
+          message: 'Each size must be an object like {"size":"100g","price":50}.',
+        });
+      }
+    }
+
+    // 5. Save
     const productDetails = await productService.createProduct({
       name: name.trim(),
       description: description.trim(),
-      category: group ? group.toUpperCase() : 'WHOLE',
-      imageUrl: uploadimage,
-      sizes: parseSizes(sizes), // expects [{size, price}]
+      category,
+      imageUrl: req.file.filename,
+      sizes: parsedSizes.map((s) => ({
+        size: String(s.size).trim(),
+        price: Number(s.price),
+      })),
     });
 
     return res.status(201).json(productDetails);
   } catch (error) {
     console.error('Add product error:', error);
-    return res.status(500).json({
+    return res.status(error.status || 500).json({
       message: error.message || 'Unable to add product.',
     });
   }
@@ -125,42 +162,14 @@ exports.updateProductController = async (req, res) => {
 // ---------------------------------------------------------------------------
 // Delete a product (admin)
 // ---------------------------------------------------------------------------
-exports.deleteProductController = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const numericId = Number(id);
-    if (Number.isNaN(numericId)) {
-      return res.status(400).json({ message: 'Invalid product ID.' });
-    }
-
-    const product = await productService.getProductById(numericId);
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found.' });
-    }
-
-    await productService.deleteProduct(numericId);
-
-    // Remove uploaded image if present
-    if (product.imageUrl) {
-      const imageName = path.basename(product.imageUrl);
-      const imagePath = path.join(process.cwd(), 'uploads', imageName);
-      try {
-        await fs.unlink(imagePath);
-      } catch (fileError) {
-        if (fileError.code !== 'ENOENT') {
-          console.error('Could not delete product image:', fileError);
-        }
-      }
-    }
-
-    return res.status(200).json({
-      message: 'Product deleted successfully.',
-      productId: numericId,
-    });
-  } catch (error) {
-    console.error('Delete product error:', error);
-    return res.status(500).json({
-      message: error.message || 'Unable to delete product.',
-    });
+exports.deleteProduct = async (id) => {
+  const used = await query('SELECT id FROM OrderItem WHERE productId = ? LIMIT 1', [id]);
+  if (used.length) {
+    const err = new Error('Product has past orders and cannot be deleted.');
+    err.status = 400;
+    throw err;
   }
+  await query('DELETE FROM CartItem WHERE productId = ?', [id]);
+  await query('DELETE FROM ProductSize WHERE productId = ?', [id]);
+  await query('DELETE FROM Product WHERE id = ?', [id]);
 };
