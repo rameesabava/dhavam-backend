@@ -110,9 +110,14 @@ exports.updateProductController = async (req, res) => {
       product: updatedProduct,
     });
   } catch (error) {
-    console.error('Update product error:', error);
+    console.error("Update product error:", error);
+    console.error("SQL message:", error.sqlMessage);
+    console.error("SQL code:", error.code);
+    console.error("SQL state:", error.sqlState);
+
     return res.status(500).json({
-      message: error.message || 'Unable to update product.',
+      message: error.sqlMessage || error.message || "Unable to update product.",
+      code: error.code,
     });
   }
 };
