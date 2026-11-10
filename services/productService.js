@@ -37,47 +37,73 @@ exports.getProductById = async (id) => {
   return product;
 };
 
+
 /* Update product (including sizes) */
 exports.updateProduct = async (id, data) => {
   const { name, description, category, imageUrl, sizes } = data;
 
-  // Update base fields
+  // Update main product details
   const set = [];
   const params = [];
-  if (name) { set.push('name = ?'); params.push(name); }
-  if (description) { set.push('description = ?'); params.push(description); }
-  if (category) { set.push('category = ?'); params.push(category); }
-  if (imageUrl) { set.push('imageUrl = ?'); params.push(imageUrl); }
 
-  if (set.length) {
-    await query(`UPDATE Product SET ${set.join(', ')} WHERE id = ?`, [...params, id]);
+  if (name !== undefined) {
+    set.push('name = ?');
+    params.push(name);
   }
 
-  // ---- Sizes handling ----
-  // `sizes` is an array of objects: { id?, size, price }
-  // - If `id` present → update existing row
-  // - If no `id` → create new row
-  // (Deletion can be added later if needed)
+  if (description !== undefined) {
+    set.push('description = ?');
+    params.push(description);
+  }
+
+  if (category !== undefined) {
+    set.push('category = ?');
+    params.push(category);
+  }
+
+  if (imageUrl !== undefined) {
+    set.push('imageUrl = ?');
+    params.push(imageUrl);
+  }
+
+  if (set.length > 0) {
+    await query(
+      `UPDATE Product SET ${set.join(', ')} WHERE id = ?`,
+      [...params, id]
+    );
+  }
+
+  // Replace all existing sizes when sizes are included in the request
   if (Array.isArray(sizes)) {
+    // Remove old size/price rows for this product
+    await query(
+      'DELETE FROM ProductSize WHERE productId = ?',
+      [id]
+    );
+
+    // Insert the newly submitted sizes and prices
     for (const s of sizes) {
-      if (s.id) {
-        // update
-        await query(
-          `UPDATE ProductSize SET size = ?, price = ? WHERE id = ? AND productId = ?`,
-          [s.size, s.price, s.id, id]
-        );
-      } else {
-        // create
-        await query(
-          `INSERT INTO ProductSize (productId, size, price) VALUES (?,?,?)`,
-          [id, s.size, s.price]
-        );
+      if (!s.size || s.price === undefined || s.price === null || s.price === '') {
+        throw new Error('Each size must have a size name and price.');
       }
+
+      const price = Number(s.price);
+
+      if (!Number.isFinite(price) || price < 0) {
+        throw new Error(`Invalid price for size ${s.size}.`);
+      }
+
+      await query(
+        `INSERT INTO ProductSize (productId, size, price)
+         VALUES (?, ?, ?)`,
+        [id, s.size.trim(), price]
+      );
     }
   }
 
   return await exports.getProductById(id);
 };
+
 
 /* Delete product (cascades sizes via foreign key ON DELETE CASCADE) */
 exports.deleteProduct = async (id) => {
