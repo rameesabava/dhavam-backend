@@ -55,7 +55,14 @@ exports.createOrder = async ({ userId, paymentMethod = 'COD' }) => {
 exports.getOrdersByUser = async (userId) => {
   const orders = await query('SELECT * FROM `Order` WHERE userId = ?', [userId]);
   for (const o of orders) {
-    o.items = await query('SELECT * FROM OrderItem WHERE orderId = ?', [o.id]);
+    // Join OrderItem with Product to get product details
+    o.items = await query(
+      `SELECT oi.*, p.name AS productName, p.imageUrl AS productImage
+       FROM OrderItem oi
+       JOIN Product p ON p.id = oi.productId
+       WHERE oi.orderId = ?`,
+      [o.id]
+    );
   }
   return orders;
 };
