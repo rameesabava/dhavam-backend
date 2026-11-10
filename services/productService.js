@@ -1,13 +1,20 @@
 // services/productService.js
 const db = require('./dbClient');
 
-// Public URL of THIS backend. Set PUBLIC_API_URL in .env when you deploy.
+// Public URL of THIS backend (only used for old filename-only images)
 const API_URL = (
   process.env.PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.RENDER_EXTERNAL_URL ||
   `http://localhost:${process.env.PORT || 5000}`
 ).replace(/\/+$/, '');
 
+function httpError(message, status = 400) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+
+// Full URLs (Cloudinary) are returned unchanged; bare filenames get the /uploads path
 function publicImageUrl(filename) {
   if (!filename) return '';
   if (/^https?:\/\//i.test(filename)) return filename;
@@ -19,7 +26,7 @@ async function query(sql, params = []) {
   return rows;
 }
 
-/* One shape for every page: works with both the new and the old field names */
+// One shape for every page
 function formatProduct(p, sizes) {
   const url = publicImageUrl(p.imageUrl);
   return {
@@ -32,8 +39,25 @@ function formatProduct(p, sizes) {
   };
 }
 
-// ---- keep your existing createProduct here ----
+/** Create a new product (admin) */
+exports.createProduct = async ({ name, description, category, imageUrl, sizes = [] }) => {
+  const result = await query(
+    'INSERT INTO Product (name, description, category, imageUrl) VALUES (?,?,?,?)',
+    [name, description ?? null, category, imageUrl ?? null]
+  );
+  const productId = result.insertId;
 
+  for (const s of sizes) {
+    await query(
+      'INSERT INTO ProductSize (productId, size, price) VALUES (?,?,?)',
+      [productId, s.size, s.price]
+    );
+  }
+
+  return await exports.getProductById(productId);
+};
+
+/** Retrieve a single product, including its sizes */
 exports.getProductById = async (id) => {
   const [product] = await query('SELECT * FROM Product WHERE id = ?', [id]);
   if (!product) return null;
@@ -41,6 +65,7 @@ exports.getProductById = async (id) => {
   return formatProduct(product, sizes);
 };
 
+/** List all products (public) */
 exports.listProducts = async () => {
   const products = await query('SELECT * FROM Product ORDER BY id DESC');
   const result = [];
@@ -51,7 +76,6 @@ exports.listProducts = async () => {
   return result;
 };
 
-// ---- keep your existing updateProduct and deleteProduct here ----
 /** Update an existing product (admin) */
 exports.updateProduct = async (id, data) => {
   const { name, description, category, imageUrl, sizes } = data;
@@ -69,18 +93,23 @@ exports.updateProduct = async (id, data) => {
 
   // Replace sizes if supplied
   if (Array.isArray(sizes)) {
-    await query('DELETE FROM ProductSize WHERE productId = ?', [id]);
-    for (const s of sizes) {
-      if (!s.size || s.price === undefined || s.price === null || s.price === '') {
-        throw new Error('Each size must have a size name and price.');
+    // Validate everything first so a bad row doesn't wipe the old sizes
+    const clean = sizes.map((s) => {
+      if (!s || !s.size || s.price === undefined || s.price === null || s.price === '') {
+        throw httpError('Each size must have a size name and price.');
       }
       const price = Number(s.price);
       if (!Number.isFinite(price) || price < 0) {
-        throw new Error(`Invalid price for size ${s.size}.`);
+        throw httpError(`Invalid price for size ${s.size}.`);
       }
+      return { size: String(s.size).trim(), price };
+    });
+
+    await query('DELETE FROM ProductSize WHERE productId = ?', [id]);
+    for (const s of clean) {
       await query(
-        `INSERT INTO ProductSize (productId, size, price) VALUES (?,?,?)`,
-        [id, s.size.trim(), price]
+        'INSERT INTO ProductSize (productId, size, price) VALUES (?,?,?)',
+        [id, s.size, s.price]
       );
     }
   }
@@ -88,7 +117,13 @@ exports.updateProduct = async (id, data) => {
   return await exports.getProductById(id);
 };
 
-/** Delete a product (admin) */
+/** Delete a product (admin). Refuses if it appears in past orders. */
 exports.deleteProduct = async (id) => {
+  const used = await query('SELECT id FROM OrderItem WHERE productId = ? LIMIT 1', [id]);
+  if (used.length) {
+    throw httpError('Product has past orders and cannot be deleted.');
+  }
+  await query('DELETE FROM CartItem WHERE productId = ?', [id]);
+  await query('DELETE FROM ProductSize WHERE productId = ?', [id]);
   await query('DELETE FROM Product WHERE id = ?', [id]);
 };
